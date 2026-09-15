@@ -1,4 +1,4 @@
-name: Remove pricing from date page
+name: Update date-page options
 
 on:
   push:
@@ -9,38 +9,55 @@ permissions:
 
 jobs:
   cleanup:
-    if: ${{ !contains(github.event.head_commit.message, 'Remove pricing from date page') }}
+    if: ${{ !contains(github.event.head_commit.message, 'Update date-page options') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Remove pricing references from venue cards
+      - name: Update venue options
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
+
           p = Path('index.html')
           s = p.read_text()
-          replacements = {
-            '.chip,.tag,.price{': '.chip,.tag{',
-            '.price{background:#251d1b;color:#fff;font-size:12px}': '',
-            "Because you picked Maharashtrian, I swapped the pricey date-night places for a proper Marathi-food option. I kept the shortlist mostly around ₹900–₹1,500 for two.": "Because you picked Maharashtrian, I swapped the pricey date-night places for a proper Marathi-food option that actually fits the vibe.",
-            "Because you picked ${[...selectedFoods].join(' + ')}, the restaurant shortlist changed with you. I kept it mostly around ₹900–₹1,500 for two.": "Because you picked ${[...selectedFoods].join(' + ')}, the restaurant shortlist changed with you. I kept the choices focused on the right vibe.",
-            "The direct answer to your Maharashtrian craving — regional food in a proper sit-down setting, without turning the date into a luxury-dining bill.": "The direct answer to your Maharashtrian craving — regional food in a proper sit-down setting with a relaxed date-night feel.",
-            "A polished Italian setting for pasta, pizza and a slightly more dressed-up date without jumping into luxury-restaurant pricing.": "A polished Italian setting for pasta, pizza and a slightly more dressed-up date.",
-            "<span class=\"price\">${v.price}</span>": "",
-            "Good pick. ${v.name} it is. ${v.price} is a much more reasonable first-date situation.": "Good pick. ${v.name} it is. This one feels right. ✨"
-          }
-          for a,b in replacements.items():
-              s = s.replace(a,b)
+
+          # Remove visible pricing without affecting the restaurant selection logic.
+          s = s.replace('.chip,.tag,.price{', '.chip,.tag{')
+          s = s.replace('.price{background:#251d1b;color:#fff;font-size:12px}', '')
+          s = re.sub(r'<span class="price">\$\{v\.price\}</span>', '', s)
+          s = s.replace('~₹1,000–₹1,400 / two', '')
+          s = s.replace('~₹1,000 / two', '')
+          s = s.replace('~₹1,400 / two', '')
+          s = s.replace('~₹900 / two', '')
+          s = s.replace('~₹1,300 / two', '')
+          s = s.replace('mostly around ₹900–₹1,500 for two', 'focused on the right vibe')
+          s = s.replace('without turning the date into a luxury-dining bill', 'with a relaxed date-night feel')
+          s = s.replace('without jumping into luxury-restaurant pricing', '')
+          s = s.replace('Good pick. ${v.name} it is. ${v.price} is a much more reasonable first-date situation.', 'Good pick. ${v.name} it is. This one feels right. ✨')
+
+          # Add a separate long-drive option once, independent of food selection.
+          if "id:'longdrive'" not in s and 'id:\"longdrive\"' not in s:
+              marker = "\n];\nlet selectedFoods"
+              long_drive = """,\n{id:'longdrive',name:'Long Drive 🌿',area:'Hyderabad outskirts / scenic route',foods:['Long Drive'],fit:'Best for a different kind of date',desc:'Let’s skip the usual restaurant plan for a while. We drive, talk, enjoy the nature, put on some good music, and actually get to know each other — without having to rush the conversation.',tags:['🚗 Long drive','🌿 Nature','🎶 Good music','🗣️ Get to know each other'],image:'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=1200&q=80',source:'Scenic-date option'}\n];\nlet selectedFoods"""
+              if marker in s:
+                  s = s.replace(marker, long_drive, 1)
+
+          # Keep Long Drive visible regardless of the food selection.
+          s = s.replace(
+              "function chosenVenues(){return venues.filter(v=>v.foods.some(f=>selectedFoods.has(f)))}",
+              "function chosenVenues(){return venues.filter(v=>v.id==='longdrive'||v.foods.some(f=>selectedFoods.has(f)))}"
+          )
           p.write_text(s)
           PY
 
-      - name: Commit cleanup
+      - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html
           git diff --cached --quiet && exit 0
-          git commit -m "Remove pricing from date page [skip ci]"
+          git commit -m "Update date-page options [skip ci]"
           git push
