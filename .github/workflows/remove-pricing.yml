@@ -1,0 +1,46 @@
+name: Remove pricing from date page
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: ${{ !contains(github.event.head_commit.message, 'Remove pricing from date page') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Remove pricing references from venue cards
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text()
+          replacements = {
+            '.chip,.tag,.price{': '.chip,.tag{',
+            '.price{background:#251d1b;color:#fff;font-size:12px}': '',
+            "Because you picked Maharashtrian, I swapped the pricey date-night places for a proper Marathi-food option. I kept the shortlist mostly around ₹900–₹1,500 for two.": "Because you picked Maharashtrian, I swapped the pricey date-night places for a proper Marathi-food option that actually fits the vibe.",
+            "Because you picked ${[...selectedFoods].join(' + ')}, the restaurant shortlist changed with you. I kept it mostly around ₹900–₹1,500 for two.": "Because you picked ${[...selectedFoods].join(' + ')}, the restaurant shortlist changed with you. I kept the choices focused on the right vibe.",
+            "The direct answer to your Maharashtrian craving — regional food in a proper sit-down setting, without turning the date into a luxury-dining bill.": "The direct answer to your Maharashtrian craving — regional food in a proper sit-down setting with a relaxed date-night feel.",
+            "A polished Italian setting for pasta, pizza and a slightly more dressed-up date without jumping into luxury-restaurant pricing.": "A polished Italian setting for pasta, pizza and a slightly more dressed-up date.",
+            "<span class=\"price\">${v.price}</span>": "",
+            "Good pick. ${v.name} it is. ${v.price} is a much more reasonable first-date situation.": "Good pick. ${v.name} it is. This one feels right. ✨"
+          }
+          for a,b in replacements.items():
+              s = s.replace(a,b)
+          p.write_text(s)
+          PY
+
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Remove pricing from date page [skip ci]"
+          git push
