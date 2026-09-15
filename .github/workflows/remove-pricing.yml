@@ -15,7 +15,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Update venue options
+      - name: Update venue and selection options
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -24,32 +24,42 @@ jobs:
           p = Path('index.html')
           s = p.read_text()
 
-          # Remove visible pricing without affecting the restaurant selection logic.
-          s = s.replace('.chip,.tag,.price{', '.chip,.tag{')
-          s = s.replace('.price{background:#251d1b;color:#fff;font-size:12px}', '')
-          s = re.sub(r'<span class="price">\$\{v\.price\}</span>', '', s)
-          s = s.replace('~₹1,000–₹1,400 / two', '')
-          s = s.replace('~₹1,000 / two', '')
-          s = s.replace('~₹1,400 / two', '')
-          s = s.replace('~₹900 / two', '')
-          s = s.replace('~₹1,300 / two', '')
-          s = s.replace('mostly around ₹900–₹1,500 for two', 'focused on the right vibe')
-          s = s.replace('without turning the date into a luxury-dining bill', 'with a relaxed date-night feel')
-          s = s.replace('without jumping into luxury-restaurant pricing', '')
-          s = s.replace('Good pick. ${v.name} it is. ${v.price} is a much more reasonable first-date situation.', 'Good pick. ${v.name} it is. This one feels right. ✨')
-
-          # Add a separate long-drive option once, independent of food selection.
-          if "id:'longdrive'" not in s and 'id:\"longdrive\"' not in s:
-              marker = "\n];\nlet selectedFoods"
-              long_drive = """,\n{id:'longdrive',name:'Long Drive 🌿',area:'Hyderabad outskirts / scenic route',foods:['Long Drive'],fit:'Best for a different kind of date',desc:'Let’s skip the usual restaurant plan for a while. We drive, talk, enjoy the nature, put on some good music, and actually get to know each other — without having to rush the conversation.',tags:['🚗 Long drive','🌿 Nature','🎶 Good music','🗣️ Get to know each other'],image:'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=1200&q=80',source:'Scenic-date option'}\n];\nlet selectedFoods"""
-              if marker in s:
-                  s = s.replace(marker, long_drive, 1)
-
-          # Keep Long Drive visible regardless of the food selection.
+          # Keep Long Drive visible regardless of food selection.
           s = s.replace(
               "function chosenVenues(){return venues.filter(v=>v.foods.some(f=>selectedFoods.has(f)))}",
               "function chosenVenues(){return venues.filter(v=>v.id==='longdrive'||v.foods.some(f=>selectedFoods.has(f)))}"
           )
+
+          # Make food/date-style selection exclusive: choosing a new option
+          # automatically deselects the previous one.
+          s = re.sub(
+              r"let selectedFoods=new Set\(\['Maharashtrian'\]\)",
+              "let selectedFoods=new Set(['Maharashtrian'])",
+              s,
+              count=1
+          )
+          old_handler = "const f=c.dataset.food;if(selectedFoods.has(f)){if(selectedFoods.size===1){toast('Keep at least one food option. 😌');return}selectedFoods.delete(f)}else selectedFoods.add(f);renderFoods();renderVenues();updateSummary();$('#places').scrollIntoView({behavior:'smooth'})"
+          new_handler = "const f=c.dataset.food;if(selectedFoods.has(f)){toast('That one is already selected. Pick another option to switch. 😌');return}else{selectedFoods=new Set([f]);selectedVenue=null}renderFoods();renderVenues();updateSummary();$('#places').scrollIntoView({behavior:'smooth'})"
+          s = s.replace(old_handler, new_handler)
+
+          # Limit date selection to today through the same date next month.
+          s = s.replace(
+              "const today=new Date();today.setHours(0,0,0,0);",
+              "const today=new Date();today.setHours(0,0,0,0);const maxDate=new Date(today);maxDate.setMonth(maxDate.getMonth()+1);"
+          )
+          s = s.replace(
+              "const dis=dt<today;",
+              "const dis=dt<today||dt>maxDate;"
+          )
+          s = s.replace(
+              "$('#next').addEventListener('click',()=>{view=new Date(view.getFullYear(),view.getMonth()+1,1);renderCalendar()});",
+              "$('#next').addEventListener('click',()=>{const maxMonth=new Date(maxDate.getFullYear(),maxDate.getMonth(),1);const x=new Date(view.getFullYear(),view.getMonth()+1,1);if(x<=maxMonth){view=x;renderCalendar()}});"
+          )
+          s = s.replace(
+              "Pick a day and a time. The calendar always starts from today.",
+              "Pick a day and a time. The calendar shows today through the same date next month."
+          )
+
           p.write_text(s)
           PY
 
